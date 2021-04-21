@@ -48,6 +48,9 @@ typedef enum SPI_ModeEnum{
     IDLE_MODE,
     TX_DATA_MODE,
     RX_DATA_MODE,
+    READING_MODE,
+    NOT_READINGMODE,
+    SENDING_MODE
 } SPI_Mode;
 
 SPI_Mode state1 = IDLE_MODE;
@@ -87,7 +90,7 @@ int main(void)
     IE2 |= UCB0RXIE;                          // Enable USCI0 RX interrupt
 
     // NEED THIS CODE CHECKED info from pg 445 of msp 430g2553  https://www.ti.com/lit/ug/slau144j/slau144j.pdf
-/***
+
     P1SEL = BIT2 + BIT1 + BIT4; // BIT 2 is SIMO , BIT1 is SOMI , bit4 is USCIa0 clk input/output
     P1SEL2 = BIT1 + BIT2 + BIT4;
 
@@ -99,26 +102,45 @@ int main(void)
     //UCA0MCTL = 0;                             // No modulation
     UCA0CTL1 &= ~UCSWRST;                     // **Initialize USCI state machine**
     IE2 |= UCA0RXIE;                          // Enable USCI0 RX interrupt
-***/
+
 
 
     __bis_SR_register(GIE); // Enable interrupts
 
-    //slaveCmd = UCA0RXBUF ;
+
+//    while(1){
+//        IE2 |= UCA0TXIE; // This works but bit shifts to right by one
+//        __bis_SR_register(GIE);
+//    }
 
     initAll();
     __no_operation();
     while(1){
-        sendIntegration(4);
-        readXaxis();
-        __no_operation();
-        angleX = determineAngle();
-        __no_operation();
+        state1 = READING_MODE;
+        if(state1 == READING_MODE  ){
+//
+            readXaxis();
+            __no_operation();
+            __bic_SR_register(GIE);
+            angleX = determineAngle();
+            __bis_SR_register(GIE);
+            __no_operation();
 
-        readYaxis();
-        __no_operation();
-        angleY = determineAngle();
-        __no_operation();
+            readYaxis();
+            __no_operation();
+            __bic_SR_register(GIE); // disable interrupts
+            angleY = determineAngle();
+            __bis_SR_register(GIE); // renable interrupts
+            __no_operation();
+
+//            sleep(1);
+        }
+        else{
+            // shoudle be in state1 = SENDING_MODE;
+            // We want to send the rest of the buffer over when requested
+            IE2 |=  UCA0TXIE;
+
+        }
 
 
     }
@@ -171,7 +193,7 @@ void init(unsigned char CS){
     else{
         P3OUT |= BIT; //raises it back high, disabling this sensor
     }
-    state1 = IDLE_MODE;
+//    state1 = IDLE_MODE;
 }
 
 void initAll(){
@@ -189,7 +211,7 @@ void initAll(){
 
 
 void sendZebra1(unsigned char BIT){
-    state1 = TX_DATA_MODE;
+//    state1 = TX_DATA_MODE;
     P3OUT &= ~BIT;  //testing CS1
     TXData = 0xE8;
 
@@ -205,11 +227,11 @@ void sendZebra1(unsigned char BIT){
     while (!(IFG2 & UCB0TXIFG));
     dataBuffer[2] = RXData;
     P3OUT |= BIT; //raises it back high, disabling this sensor
-    state1 = IDLE_MODE;
+//    state1 = IDLE_MODE;
 }
 
 void sendZebra2(unsigned char BIT){
-    state1 = TX_DATA_MODE;
+//    state1 = TX_DATA_MODE;
     P3OUT &= ~BIT;  //testing CS1
     TXData = 0xE4;
 
@@ -225,13 +247,13 @@ void sendZebra2(unsigned char BIT){
     while (!(IFG2 & UCB0TXIFG));
     dataBuffer[2] = RXData;
     P3OUT |= BIT; //raises it back high, disabling this sensor
-    state1 = IDLE_MODE;
+//    state1 = IDLE_MODE;
 
 }
 
 
 void sendZebra0(unsigned char BIT){
-    state1 = TX_DATA_MODE;
+//    state1 = TX_DATA_MODE;
     P3OUT &= ~BIT;  //testing CS1
     TXData = 0xE2;
 
@@ -247,12 +269,12 @@ void sendZebra0(unsigned char BIT){
     while (!(IFG2 & UCB0TXIFG));
     dataBuffer[2] = RXData;
     P3OUT |= BIT; //raises it back high, disabling this sensor
-    state1 = IDLE_MODE;
+//    state1 = IDLE_MODE;
 
 }
 
 void sendIntegration(unsigned char CS){
-      state1 = TX_DATA_MODE;
+//      state1 = TX_DATA_MODE;
       unsigned char BIT = 0;
       switch(CS){
           case 0:
@@ -301,7 +323,7 @@ void sendIntegration(unsigned char CS){
       else{
           P3OUT |= BIT;
       }
-      state1 = IDLE_MODE;
+//      state1 = IDLE_MODE;
 }
 
 
@@ -677,7 +699,7 @@ double determineAngle(){
 
 
 void setThreshold(unsigned char CS, unsigned char input){
-    state1 = TX_DATA_MODE;
+//    state1 = TX_DATA_MODE;
     unsigned char BIT;
     switch(CS){
          case 0:
@@ -721,14 +743,14 @@ void setThreshold(unsigned char CS, unsigned char input){
     else{
         P3OUT |= BIT; //raises it back high, disabling this sensor
     }
-    state1 = IDLE_MODE;
+//    state1 = IDLE_MODE;
 
 }
 
 
 
 void readAll(unsigned char CS){
-    state1 = TX_DATA_MODE;
+//    state1 = TX_DATA_MODE;
     unsigned char BIT;
     switch(CS){
          case 0:
@@ -791,7 +813,7 @@ void readAll(unsigned char CS){
     else{
         P3OUT |= BIT; //raises it back high, disabling this sensor
     }
-    state1 = IDLE_MODE;
+//    state1 = IDLE_MODE;
 }
 
 
@@ -800,80 +822,116 @@ void sendReadings(){
     double mask = 0xFF;
     char *bytes = &READING;
     for(i = 0; i < sizeof(double); i++){
+        while (!(IFG2 & UCA0TXIFG));
         UCA0TXBUF = (char) (bytes[i]);
+    }
+//    state1 = READING_MODE; //finish transmit so go back to reading mode
+
+}
+//TX interrupt
+#pragma vector=USCIAB0TX_VECTOR
+__interrupt void USCIB0TX_ISR(void)
+{
+    UCB0TXBUF = TXData;
+    IE2 &= ~UCB0TXIE;
+}
+//__interrupt void USCIA0TX_ISR(void)
+//{
+//    UCA0TXBUF = 0xff  ; //TXData_slave;
+//    IE2 &= ~UCA0TXIE;
+//}
+// Rx Interrupt
+#pragma vector=USCIAB0RX_VECTOR
+__interrupt void USCIB0RX_ISR(void)
+//__interrupt void USCIA0RX_ISR(void)
+{
+    if(state1 == SENDING_MODE){
+//        char *readings = &READING;
+        while (!(IFG2 & UCA0TXIFG));              // USCI_A0 TX buffer ready?
+        UCA0TXBUF = 0x01; //UCA0RXBUF;
+//        sendReadings();
+//        UCA0TXBUF = readings[READING_INDEX];
+//        READING_INDEX += 1;
+//        if(READING_INDEX == 8){
+//            READING_INDEX = 0 ;
+//            state1 = READING_MODE;
+//
+    }
+    else{
+//        //for slave cmd
+        RXData = UCB0RXBUF;
     }
 
 }
 
-
-
-// Tx Interrupt
-#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
-#pragma vector=USCIAB0TX_VECTOR
-__interrupt void USCIB0TX_ISR(void)
-#elif defined(__GNUC__)
-void __attribute__ ((interrupt(USCIAB0TX_VECTOR))) USCIB0TX_ISR (void)
-#else
-#error Compiler not supported!
-#endif
-{
-    UCB0TXBUF = TXData;
-    IE2 &= ~UCB0TXIE;
-
-}
-
-
-// Rx Interrupt
-#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
-#pragma vector=USCIAB0RX_VECTOR
-__interrupt void USCIB0RX_ISR(void)
-#elif defined(__GNUC__)
-void __attribute__ ((interrupt(USCIAB0RX_VECTOR))) USCIB0RX_ISR (void)
-#else
-#error Compiler not supported!
-#endif
-{
-    RXData = UCB0RXBUF;
-}
-
-
-
-///#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
-///#pragma vector=USCIAB0RX_VECTOR
-///__interrupt void USCBB0RX_ISR (void)
-///#elif defined(__GNUC__)
-///void __attribute__ ((interrupt(USCIAB0RX_VECTOR))) USCI0RX_ISR (void)
-///#else
-///#error Compiler not supported!
-///#endif
-///{
-///  while (!(IFG2 & UCA0TXIFG));              // USCI_A0 TX buffer ready?
-///  if(UCA0RXBUF == 1){
-///      sendReadings(); //handles handing off the bytes to the TXBUF
-///  }
-///}
-
-//#pragma vector=USCIAB0TX_VECTOR
-//__interrupt void USCIB0TX_ISR(void)
-//{
-//    UCB0TXBUF = TXData;
-//    IE2 &= ~UCB0TXIE;
-//}
-//__interrupt void USCIA0TX_ISR(void)
-//{
-//    UCA0TXBUF = TXData_slave;
-//    IE2 &= ~UCA0TXIE;
-//}
-//// Rx Interrupt
 //#pragma vector=USCIAB0RX_VECTOR
-//__interrupt void USCIB0RX_ISR(void)
+//__interrupt void USCIA0RX_ISR(void)
 //{
-//    RXData = UCB0RXBUF;
+//    while (!(IFG2 & UCA0TXIFG));              // USCI_A0 TX buffer ready?
+//    UCA0TXBUF = 0x01; //UCA0RXBUF;
 //}
+
+//
+//
+//// Tx Interrupt
+////#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
+////#pragma vector=USCIAB0TX_VECTOR
+////__interrupt void USCIB0TX_ISR(void)
+////#elif defined(__GNUC__)
+////void __attribute__ ((interrupt(USCIAB0TX_VECTOR))) USCIB0TX_ISR (void)
+////#else
+////#error Compiler not supported!
+////#endif
+////{
+////    UCB0TXBUF = TXData;
+////    IE2 &= ~UCB0TXIE;
+////
+////}
+////
+////
+////// Rx Interrupt
+////#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
+////#pragma vector=USCIAB0RX_VECTOR
+////__interrupt void USCIB0RX_ISR(void)
+////#elif defined(__GNUC__)
+////void __attribute__ ((interrupt(USCIAB0RX_VECTOR))) USCIB0RX_ISR (void)
+////#else
+////#error Compiler not supported!
+////#endif
+////{
+////    RXData = UCB0RXBUF;
+////}
+//
+//
+//
+/////#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
+/////#pragma vector=USCIAB0RX_VECTOR
+/////__interrupt void USCBB0RX_ISR (void)
+/////#elif defined(__GNUC__)
+/////void __attribute__ ((interrupt(USCIAB0RX_VECTOR))) USCI0RX_ISR (void)
+/////#else
+/////#error Compiler not supported!
+/////#endif
+/////{
+/////  while (!(IFG2 & UCA0TXIFG));              // USCI_A0 TX buffer ready?
+/////  if(UCA0RXBUF == 1){
+/////      sendReadings(); //handles handing off the bytes to the TXBUF
+/////  }
+/////}
+//
+
+
 //__interrupt void USCIA0RX_ISR(void)
 //{
 //    slaveCmd = UCA0RXBUF;
-//}}
+//}
+
+// Echo character
+//__interrupt void USCIA0RX_ISR(void)
+//{
+//  while (!(IFG2 & UCA0TXIFG));              // USCI_A0 TX buffer ready?
+//  UCA0TXBUF = UCA0RXBUF;
+//}
 
 /* --COPYRIGHT--,BSD_EX
  * Copyright (c) 2012, Texas Instruments Incorporated
@@ -1017,20 +1075,20 @@ void __attribute__ ((interrupt(USCIAB0RX_VECTOR))) USCIB0RX_ISR (void)
 //  //}
 //
 //}
-////// Echo character
-////#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
-////#pragma vector=USCIAB0RX_VECTOR
-////__interrupt void USCI0RX_ISR (void)
-////#elif defined(__GNUC__)
-////void __attribute__ ((interrupt(USCIAB0RX_VECTOR))) USCI0RX_ISR (void)
-////#else
-////#error Compiler not supported!
-////#endif
-////{
-////  while (!(IFG2 & UCA0TXIFG));              // USCI_A0 TX buffer ready?
-////  UCA0TXBUF = UCA0RXBUF;
-////}
-//
+//// Echo character
+//#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
+//#pragma vector=USCIAB0RX_VECTOR
+//__interrupt void USCI0RX_ISR (void)
+//#elif defined(__GNUC__)
+//void __attribute__ ((interrupt(USCIAB0RX_VECTOR))) USCI0RX_ISR (void)
+//#else
+//#error Compiler not supported!
+//#endif
+//{
+//  while (!(IFG2 & UCA0TXIFG));              // USCI_A0 TX buffer ready?
+//  UCA0TXBUF = UCA0RXBUF;
+//}
+
 //
 //
 ////           unsigned char toShift = databuffer[i] ;
@@ -1067,7 +1125,7 @@ void __attribute__ ((interrupt(USCIAB0RX_VECTOR))) USCIB0RX_ISR (void)
 //   // readAll(1);
 //    __no_operation();
 //
- //***/
+// ***/
 //            |             P1.1|-> Data In (UCA0SIMO)
 //            |                 |
 //            |             P1.4|<- Serial Clock In (UCA0CLK)

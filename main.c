@@ -91,17 +91,17 @@ int main(void)
 
     // NEED THIS CODE CHECKED info from pg 445 of msp 430g2553  https://www.ti.com/lit/ug/slau144j/slau144j.pdf
 
-    P1SEL = BIT2 + BIT1 + BIT4; // BIT 2 is SIMO , BIT1 is SOMI , bit4 is USCIa0 clk input/output
-    P1SEL2 = BIT1 + BIT2 + BIT4;
-
-
-    UCA0CTL1 = UCSWRST;                       // **Put state machine in reset**
-    UCA0CTL0 |= UCCKPL + UCMSB + UCSYNC;  // 3-pin, 8-bit SPI master MSB first big endian , no UCMST so slave mode
-
-
-    //UCA0MCTL = 0;                             // No modulation
-    UCA0CTL1 &= ~UCSWRST;                     // **Initialize USCI state machine**
-    IE2 |= UCA0RXIE;                          // Enable USCI0 RX interrupt
+//    P1SEL = BIT2 + BIT1 + BIT4; // BIT 2 is SIMO , BIT1 is SOMI , bit4 is USCIa0 clk input/output
+//    P1SEL2 = BIT1 + BIT2 + BIT4;
+//
+//
+//    UCA0CTL1 = UCSWRST;                       // **Put state machine in reset**
+//    UCA0CTL0 |= UCCKPL + UCMSB + UCSYNC;  // 3-pin, 8-bit SPI master MSB first big endian , no UCMST so slave mode
+//
+//
+//    //UCA0MCTL = 0;                             // No modulation
+//    UCA0CTL1 &= ~UCSWRST;                     // **Initialize USCI state machine**
+//    IE2 |= UCA0RXIE;                          // Enable USCI0 RX interrupt
 
 
 
@@ -109,7 +109,7 @@ int main(void)
 
 
 //    while(1){
-//        IE2 |= UCA0TXIE; // This works but bit shifts to right by one
+//        IE2 |= UCA0TXIE; // This works but bit shifts to right by one One setting is wrong?
 //        __bis_SR_register(GIE);
 //    }
 
@@ -121,18 +121,18 @@ int main(void)
 //
             readXaxis();
             __no_operation();
-            __bic_SR_register(GIE);
+//            __bic_SR_register(GIE);
             angleX = determineAngle();
-            __bis_SR_register(GIE);
+//            __bis_SR_register(GIE);
             __no_operation();
 
             readYaxis();
             __no_operation();
-            __bic_SR_register(GIE); // disable interrupts
+//            __bic_SR_register(GIE); // disable interrupts
             angleY = determineAngle();
-            __bis_SR_register(GIE); // renable interrupts
+//            __bis_SR_register(GIE); // renable interrupts
             __no_operation();
-
+//            initAll();
 //            sleep(1);
         }
         else{
@@ -180,20 +180,24 @@ void init(unsigned char CS){
     TXData = 0xF0;
 
     IE2 |= UCB0TXIE;
+    __no_operation();
     while (!(IFG2 & UCB0TXIFG));
+    dataBuffer[0] = RXData;
     TXData = 0x00;
     IE2 |= UCB0TXIE;
     while (!(IFG2 & UCB0TXIFG));
+    dataBuffer[1] = RXData;
     TXData = 0x00;
     IE2 |= UCB0TXIE;
     while (!(IFG2 & UCB0TXIFG));
+    dataBuffer[2] = RXData;
     if(CS == 3 || CS == 2 || CS == 5){
         P2OUT |= BIT;
     }
     else{
         P3OUT |= BIT; //raises it back high, disabling this sensor
     }
-//    state1 = IDLE_MODE;
+    state1 = IDLE_MODE;
 }
 
 void initAll(){
@@ -211,7 +215,7 @@ void initAll(){
 
 
 void sendZebra1(unsigned char BIT){
-//    state1 = TX_DATA_MODE;
+    state1 = TX_DATA_MODE;
     P3OUT &= ~BIT;  //testing CS1
     TXData = 0xE8;
 
@@ -227,11 +231,11 @@ void sendZebra1(unsigned char BIT){
     while (!(IFG2 & UCB0TXIFG));
     dataBuffer[2] = RXData;
     P3OUT |= BIT; //raises it back high, disabling this sensor
-//    state1 = IDLE_MODE;
+    state1 = IDLE_MODE;
 }
 
 void sendZebra2(unsigned char BIT){
-//    state1 = TX_DATA_MODE;
+    state1 = TX_DATA_MODE;
     P3OUT &= ~BIT;  //testing CS1
     TXData = 0xE4;
 
@@ -247,13 +251,13 @@ void sendZebra2(unsigned char BIT){
     while (!(IFG2 & UCB0TXIFG));
     dataBuffer[2] = RXData;
     P3OUT |= BIT; //raises it back high, disabling this sensor
-//    state1 = IDLE_MODE;
+    state1 = IDLE_MODE;
 
 }
 
 
 void sendZebra0(unsigned char BIT){
-//    state1 = TX_DATA_MODE;
+    state1 = TX_DATA_MODE;
     P3OUT &= ~BIT;  //testing CS1
     TXData = 0xE2;
 
@@ -269,12 +273,12 @@ void sendZebra0(unsigned char BIT){
     while (!(IFG2 & UCB0TXIFG));
     dataBuffer[2] = RXData;
     P3OUT |= BIT; //raises it back high, disabling this sensor
-//    state1 = IDLE_MODE;
+    state1 = IDLE_MODE;
 
 }
 
 void sendIntegration(unsigned char CS){
-//      state1 = TX_DATA_MODE;
+      state1 = TX_DATA_MODE;
       unsigned char BIT = 0;
       switch(CS){
           case 0:
@@ -323,7 +327,7 @@ void sendIntegration(unsigned char CS){
       else{
           P3OUT |= BIT;
       }
-//      state1 = IDLE_MODE;
+      state1 = IDLE_MODE;
 }
 
 
@@ -334,17 +338,23 @@ void readXaxis(){
 
     //sendZebra1(BIT0);
     sendIntegration(3);
+
     __no_operation();
-    while(1){
+    //Check if we actually have a sanity byte if zero we done fucked up
+    if(!dataBuffer[0]){
+
+    }
+    else{
+        while(1){
         //int toCheck = P2IN & corresponding FR bit;
         //WE want to break loop if P2In is high 1, so when we and it with bit, we get 1.
 
-        __no_operation();
-        if (P2IN & BIT1){ // wait for FR to go back high
+            __no_operation();
+            if (P2IN & BIT1){ // wait for FR to go back high
             __no_operation();
             break;
+            }
         }
-
     }
 
     __no_operation();
@@ -699,7 +709,7 @@ double determineAngle(){
 
 
 void setThreshold(unsigned char CS, unsigned char input){
-//    state1 = TX_DATA_MODE;
+    state1 = TX_DATA_MODE;
     unsigned char BIT;
     switch(CS){
          case 0:
@@ -743,14 +753,14 @@ void setThreshold(unsigned char CS, unsigned char input){
     else{
         P3OUT |= BIT; //raises it back high, disabling this sensor
     }
-//    state1 = IDLE_MODE;
+    state1 = IDLE_MODE;
 
 }
 
 
 
 void readAll(unsigned char CS){
-//    state1 = TX_DATA_MODE;
+    state1 = TX_DATA_MODE;
     unsigned char BIT;
     switch(CS){
          case 0:
@@ -813,12 +823,13 @@ void readAll(unsigned char CS){
     else{
         P3OUT |= BIT; //raises it back high, disabling this sensor
     }
-//    state1 = IDLE_MODE;
+    state1 = IDLE_MODE;
 }
 
 
 void sendReadings(){
     size_t i ;
+    state1 == SENDING_MODE ;
     double mask = 0xFF;
     char *bytes = &READING;
     for(i = 0; i < sizeof(double); i++){
@@ -830,7 +841,7 @@ void sendReadings(){
 }
 //TX interrupt
 #pragma vector=USCIAB0TX_VECTOR
-__interrupt void USCIB0TX_ISR(void)
+__interrupt void USCIAB0TX_ISR(void)
 {
     UCB0TXBUF = TXData;
     IE2 &= ~UCB0TXIE;
@@ -842,23 +853,27 @@ __interrupt void USCIB0TX_ISR(void)
 //}
 // Rx Interrupt
 #pragma vector=USCIAB0RX_VECTOR
-__interrupt void USCIB0RX_ISR(void)
+__interrupt void USCIAB0RX_ISR(void)
 //__interrupt void USCIA0RX_ISR(void)
 {
-    if(state1 == SENDING_MODE){
-//        char *readings = &READING;
+    state1 = READING_MODE;
+    if(IFG2 & UCA0RXIFG) // received a command and in correct mode
+    {
         while (!(IFG2 & UCA0TXIFG));              // USCI_A0 TX buffer ready?
-        UCA0TXBUF = 0x01; //UCA0RXBUF;
-//        sendReadings();
-//        UCA0TXBUF = readings[READING_INDEX];
-//        READING_INDEX += 1;
-//        if(READING_INDEX == 8){
-//            READING_INDEX = 0 ;
-//            state1 = READING_MODE;
-//
+        UCA0TXBUF = 0x01;
     }
-    else{
-//        //for slave cmd
+//    if(state1 == SENDING_MODE){
+////        char *readings = &READING;
+//        //UCA0RXBUF;
+////        sendReadings();
+////        UCA0TXBUF = readings[READING_INDEX];
+////        READING_INDEX += 1;
+////        if(READING_INDEX == 8){
+////            READING_INDEX = 0 ;
+////            state1 = READING_MODE;
+////
+//    }
+    else if (IFG2 & UCB0RXIFG){      //for slave cmd
         RXData = UCB0RXBUF;
     }
 

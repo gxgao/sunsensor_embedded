@@ -44,6 +44,10 @@ short LSB = 0;
 
 short numOfBits = 408  ;//(finalarraylength + 1)* 8
 
+volatile unsigned char ifgCpy = 0;
+volatile unsigned char ie2Cpy = 0;
+volatile unsigned char srCpy = 0;
+
 typedef enum SPI_ModeEnum{
     IDLE_MODE,
     TX_DATA_MODE,
@@ -87,7 +91,9 @@ int main(void)
     UCB0BR1 = 0;                              //
     //UCB0MCTL = 0;                             // No modulation
     UCB0CTL1 &= ~UCSWRST;                     // **Initialize USCI state machine**
+    ie2Cpy = IE2;
     IE2 |= UCB0RXIE;                          // Enable USCI0 RX interrupt
+    ie2Cpy = IE2;
 
     // NEED THIS CODE CHECKED info from pg 445 of msp 430g2553  https://www.ti.com/lit/ug/slau144j/slau144j.pdf
 
@@ -106,7 +112,7 @@ int main(void)
 
 
     __bis_SR_register(GIE); // Enable interrupts
-
+    ie2Cpy = IE2;
 
 //    while(1){
 //        IE2 |= UCA0TXIE; // This works but bit shifts to right by one One setting is wrong?
@@ -180,8 +186,14 @@ void init(unsigned char CS){
     TXData = 0xF0;
 
     IE2 |= UCB0TXIE;
+    __bis_SR_register(GIE);
+    ie2Cpy = IE2;
     __no_operation();
+    ifgCpy = IFG2;
     while (!(IFG2 & UCB0TXIFG));
+    ifgCpy = IFG2;
+
+   // while (!(IFG2 & UCB0RXIFG)); // wait for rx to come
     dataBuffer[0] = RXData;
     TXData = 0x00;
     IE2 |= UCB0TXIE;
@@ -340,7 +352,7 @@ void readXaxis(){
     sendIntegration(3);
 
     __no_operation();
-    //Check if we actually have a sanity byte if zero we done fucked up
+    //Check if we actually have a sanity byte if zero something broke
     if(!dataBuffer[0]){
 
     }
@@ -841,7 +853,7 @@ void sendReadings(){
 }
 //TX interrupt
 #pragma vector=USCIAB0TX_VECTOR
-__interrupt void USCIAB0TX_ISR(void)
+__interrupt void USCIB0TX_ISR(void)
 {
     UCB0TXBUF = TXData;
     IE2 &= ~UCB0TXIE;
@@ -853,7 +865,7 @@ __interrupt void USCIAB0TX_ISR(void)
 //}
 // Rx Interrupt
 #pragma vector=USCIAB0RX_VECTOR
-__interrupt void USCIAB0RX_ISR(void)
+__interrupt void USCIB0RX_ISR(void)
 //__interrupt void USCIA0RX_ISR(void)
 {
     state1 = READING_MODE;

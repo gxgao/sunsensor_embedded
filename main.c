@@ -15,7 +15,11 @@ unsigned char finalArray[50];
 
 volatile unsigned char RXData = 0;
 volatile unsigned char slaveCmd = 0;
-double READING ;
+
+
+// REading that we work with when trying to get new reading
+double READINGX ;
+double READINGY;
 
 
 void init(unsigned char BIT);
@@ -48,6 +52,9 @@ volatile unsigned char ifgCpy = 0;
 volatile unsigned char ie2Cpy = 0;
 volatile unsigned char srCpy = 0;
 
+char TEST_MODE = 0 ;
+volatile char RECEIVED = 0;
+
 typedef enum SPI_ModeEnum{
     IDLE_MODE,
     TX_DATA_MODE,
@@ -59,11 +66,9 @@ typedef enum SPI_ModeEnum{
 
 SPI_Mode state1 = IDLE_MODE;
 
+// Initializes Spi master resposnse so that it can communicate with the sensors on the board
 
-int main(void)
-{
-    WDTCTL = WDTPW | WDTHOLD;   // stop watchdog timer
-
+void init_SPI_master(){
     //CS pin picking
 
     //P3.7 : CS1 , P3.5 CS4, P2.4 CS5, P3.1 CS0 , P2.0 CS3, P2.2 CS2
@@ -94,32 +99,47 @@ int main(void)
     ie2Cpy = IE2;
     IE2 |= UCB0RXIE;                          // Enable USCI0 RX interrupt
     ie2Cpy = IE2;
+}
 
+
+//Initializes slave response registers so that the device can send readings to an external master
+
+void init_SPI_slave(){
     // NEED THIS CODE CHECKED info from pg 445 of msp 430g2553  https://www.ti.com/lit/ug/slau144j/slau144j.pdf
 
-//    P1SEL = BIT2 + BIT1 + BIT4; // BIT 2 is SIMO , BIT1 is SOMI , bit4 is USCIa0 clk input/output
-//    P1SEL2 = BIT1 + BIT2 + BIT4;
-//
-//
-//    UCA0CTL1 = UCSWRST;                       // **Put state machine in reset**
-//    UCA0CTL0 |= UCCKPL + UCMSB + UCSYNC;  // 3-pin, 8-bit SPI master MSB first big endian , no UCMST so slave mode
-//
-//
-//    //UCA0MCTL = 0;                             // No modulation
-//    UCA0CTL1 &= ~UCSWRST;                     // **Initialize USCI state machine**
-//    IE2 |= UCA0RXIE;                          // Enable USCI0 RX interrupt
+    P1SEL = BIT2 + BIT1 + BIT4; // BIT 2 is SIMO , BIT1 is SOMI , bit4 is USCIa0 clk input/output
+    P1SEL2 = BIT1 + BIT2 + BIT4;
 
 
+    UCA0CTL1 = UCSWRST;                       // **Put state machine in reset**
+    UCA0CTL0 |= UCCKPL + UCMSB + UCSYNC;  // 3-pin, 8-bit SPI master MSB first big endian , no UCMST so slave mode
+
+
+    //UCA0MCTL = 0;                             // No modulation
+    UCA0CTL1 &= ~UCSWRST;                     // **Initialize USCI state machine**
+   // IE2 |= UCA0RXIE;                          // Enable USCI0 RX interrupt
+}
+
+int main(void)
+{
+    WDTCTL = WDTPW | WDTHOLD;   // stop watchdog timer
+
+
+    init_SPI_master() ;
+
+    //init_SPI_slave();
 
     __bis_SR_register(GIE); // Enable interrupts
     ie2Cpy = IE2;
 
 //    while(1){
 //        IE2 |= UCA0TXIE; // This works but bit shifts to right by one One setting is wrong?
-//        __bis_SR_register(GIE);
+//        //__bis_SR_register(GIE);
 //    }
 
     initAll();
+
+    state1 = READING_MODE;
     __no_operation();
     while(1){
         state1 = READING_MODE;
@@ -128,18 +148,28 @@ int main(void)
             readXaxis();
             __no_operation();
 //            __bic_SR_register(GIE);
-            angleX = determineAngle();
+            if(TEST_MODE){
+                READINGX = 2.5;
+            }
+            else{
+                READINGX = determineAngle();
+            }
+
 //            __bis_SR_register(GIE);
             __no_operation();
 
             readYaxis();
             __no_operation();
-//            __bic_SR_register(GIE); // disable interrupts
-            angleY = determineAngle();
+//           __bic_SR_register(GIE); // disable interrupts
+            if(TEST_MODE){
+                READINGY = 1.5;
+            }
+            else{
+                READINGY = determineAngle();
+            }
 //            __bis_SR_register(GIE); // renable interrupts
             __no_operation();
-//            initAll();
-//            sleep(1);
+
         }
         else{
             // shoudle be in state1 = SENDING_MODE;
@@ -154,7 +184,7 @@ int main(void)
 }
 
 void init(unsigned char CS){
-    state1 = TX_DATA_MODE;
+//    state1 = TX_DATA_MODE;
     unsigned char BIT;
     switch(CS){
          case 0:
@@ -187,13 +217,13 @@ void init(unsigned char CS){
 
     IE2 |= UCB0TXIE;
     __bis_SR_register(GIE);
-    ie2Cpy = IE2;
+//    ie2Cpy = IE2;
     __no_operation();
-    ifgCpy = IFG2;
+//    ifgCpy = IFG2;
     while (!(IFG2 & UCB0TXIFG));
-    ifgCpy = IFG2;
+//    ifgCpy = IFG2;
 
-   // while (!(IFG2 & UCB0RXIFG)); // wait for rx to come
+
     dataBuffer[0] = RXData;
     TXData = 0x00;
     IE2 |= UCB0TXIE;
@@ -209,25 +239,25 @@ void init(unsigned char CS){
     else{
         P3OUT |= BIT; //raises it back high, disabling this sensor
     }
-    state1 = IDLE_MODE;
+//    state1 = IDLE_MODE;
 }
 
 void initAll(){
     init(3);
     __no_operation();
-    init(4);
-    init(5);
+//    init(4);
+//    init(5);
 
     init(0);
-    init(1);
-    init(2);
+//    init(1);
+//    init(2);
 }
 
 
 
 
 void sendZebra1(unsigned char BIT){
-    state1 = TX_DATA_MODE;
+//    state1 = TX_DATA_MODE;
     P3OUT &= ~BIT;  //testing CS1
     TXData = 0xE8;
 
@@ -243,11 +273,11 @@ void sendZebra1(unsigned char BIT){
     while (!(IFG2 & UCB0TXIFG));
     dataBuffer[2] = RXData;
     P3OUT |= BIT; //raises it back high, disabling this sensor
-    state1 = IDLE_MODE;
+//    state1 = IDLE_MODE;
 }
 
 void sendZebra2(unsigned char BIT){
-    state1 = TX_DATA_MODE;
+//    state1 = TX_DATA_MODE;
     P3OUT &= ~BIT;  //testing CS1
     TXData = 0xE4;
 
@@ -263,13 +293,13 @@ void sendZebra2(unsigned char BIT){
     while (!(IFG2 & UCB0TXIFG));
     dataBuffer[2] = RXData;
     P3OUT |= BIT; //raises it back high, disabling this sensor
-    state1 = IDLE_MODE;
+//    state1 = IDLE_MODE;
 
 }
 
 
 void sendZebra0(unsigned char BIT){
-    state1 = TX_DATA_MODE;
+//    state1 = TX_DATA_MODE;
     P3OUT &= ~BIT;  //testing CS1
     TXData = 0xE2;
 
@@ -285,12 +315,12 @@ void sendZebra0(unsigned char BIT){
     while (!(IFG2 & UCB0TXIFG));
     dataBuffer[2] = RXData;
     P3OUT |= BIT; //raises it back high, disabling this sensor
-    state1 = IDLE_MODE;
+//    state1 = IDLE_MODE;
 
 }
 
 void sendIntegration(unsigned char CS){
-      state1 = TX_DATA_MODE;
+//      state1 = TX_DATA_MODE;
       unsigned char BIT = 0;
       switch(CS){
           case 0:
@@ -323,6 +353,8 @@ void sendIntegration(unsigned char CS){
 
       IE2 |= UCB0TXIE;
       while (!(IFG2 & UCB0TXIFG));
+      while(! RECEIVED);
+      RECEIVED = 0;
       dataBuffer[0] = RXData;
       TXData = 0xFF;
       IE2 |= UCB0TXIE;
@@ -339,7 +371,7 @@ void sendIntegration(unsigned char CS){
       else{
           P3OUT |= BIT;
       }
-      state1 = IDLE_MODE;
+//      state1 = IDLE_MODE;
 }
 
 
@@ -452,7 +484,7 @@ void readXaxis(){
 
       }
       else if(count == 33){
-          finalArray[count] = finalArray[count] | dataBuffer[i]; //Or the overlap
+          finalArray[count] = finalArray[count] & dataBuffer[i]; //Or the overlap
           count += 1;
       }
       else{
@@ -495,7 +527,7 @@ void readYaxis(){
     }
 
     __no_operation();
-    //CS4 start here
+    //CS1 start here
     __no_operation();
     setThreshold(1, 16);
 
@@ -567,7 +599,7 @@ void readYaxis(){
 
      }
      else if(count == 33){
-         finalArray[count] = finalArray[count] | dataBuffer[i]; //Or the overlap
+         finalArray[count] = finalArray[count] & dataBuffer[i]; //Or the overlap
          count += 1;
      }
      else{
@@ -711,17 +743,20 @@ double determineAngle(){
      }
     //calculating angle = tan-1(d/h) h and d are presets
     double avgPos = (MSB + LSB)/2.0 ;
+    if(avgPos == 0){
+        return -1.0;
+    }
     // Sensors are 7.1 MM Optical array. 32 pixel overlap. So 7.1 * 3 - (32/144 * 7.1) = 19.72 mm for total array
     //midpoint is 200 for angle 0
     double d = (avgPos-(numOfBits/2.0)) * 23.216/numOfBits;
-    double angle = atan(d/slitHeight);
-    READING = angle;
+    double angle = atan2(slitHeight,d);
+//    READING = angle;
     return angle ;
 }
 
 
 void setThreshold(unsigned char CS, unsigned char input){
-    state1 = TX_DATA_MODE;
+//    state1 = TX_DATA_MODE;
     unsigned char BIT;
     switch(CS){
          case 0:
@@ -765,14 +800,14 @@ void setThreshold(unsigned char CS, unsigned char input){
     else{
         P3OUT |= BIT; //raises it back high, disabling this sensor
     }
-    state1 = IDLE_MODE;
+//    state1 = IDLE_MODE;
 
 }
 
 
 
 void readAll(unsigned char CS){
-    state1 = TX_DATA_MODE;
+//    state1 = TX_DATA_MODE;
     unsigned char BIT;
     switch(CS){
          case 0:
@@ -835,7 +870,7 @@ void readAll(unsigned char CS){
     else{
         P3OUT |= BIT; //raises it back high, disabling this sensor
     }
-    state1 = IDLE_MODE;
+//    state1 = IDLE_MODE;
 }
 
 
@@ -843,7 +878,12 @@ void sendReadings(){
     size_t i ;
     state1 == SENDING_MODE ;
     double mask = 0xFF;
-    char *bytes = &READING;
+    char *bytes = &READINGX;
+    char *bytesY = &READINGY;
+    for(i = 0; i < sizeof(double); i++){
+        while (!(IFG2 & UCA0TXIFG));
+        UCA0TXBUF = (char) (bytes[i]);
+    }
     for(i = 0; i < sizeof(double); i++){
         while (!(IFG2 & UCA0TXIFG));
         UCA0TXBUF = (char) (bytes[i]);
@@ -858,19 +898,15 @@ __interrupt void USCIB0TX_ISR(void)
     UCB0TXBUF = TXData;
     IE2 &= ~UCB0TXIE;
 }
-//__interrupt void USCIA0TX_ISR(void)
-//{
-//    UCA0TXBUF = 0xff  ; //TXData_slave;
-//    IE2 &= ~UCA0TXIE;
-//}
-// Rx Interrupt
+
 #pragma vector=USCIAB0RX_VECTOR
 __interrupt void USCIB0RX_ISR(void)
 //__interrupt void USCIA0RX_ISR(void)
 {
-    state1 = READING_MODE;
+
     if(IFG2 & UCA0RXIFG) // received a command and in correct mode
     {
+        state1 = SENDING_MODE;
         while (!(IFG2 & UCA0TXIFG));              // USCI_A0 TX buffer ready?
         UCA0TXBUF = 0x01;
     }
@@ -886,7 +922,10 @@ __interrupt void USCIB0RX_ISR(void)
 ////
 //    }
     else if (IFG2 & UCB0RXIFG){      //for slave cmd
+        state1 = READING_MODE;
+
         RXData = UCB0RXBUF;
+        RECEIVED = 1 ;
     }
 
 }

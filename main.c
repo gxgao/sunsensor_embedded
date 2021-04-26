@@ -107,8 +107,8 @@ void init_SPI_master(){
 void init_SPI_slave(){
     // NEED THIS CODE CHECKED info from pg 445 of msp 430g2553  https://www.ti.com/lit/ug/slau144j/slau144j.pdf
 
-    P1SEL = BIT2 + BIT1 + BIT4; // BIT 2 is SIMO , BIT1 is SOMI , bit4 is USCIa0 clk input/output
-    P1SEL2 = BIT1 + BIT2 + BIT4;
+    P1SEL |=  BIT2 + BIT1 + BIT4; // BIT 2 is SIMO , BIT1 is SOMI , bit4 is USCIa0 clk input/output
+    P1SEL2 |= BIT1 + BIT2 + BIT4;
 
 
     UCA0CTL1 = UCSWRST;                       // **Put state machine in reset**
@@ -127,7 +127,7 @@ int main(void)
 
     init_SPI_master() ;
 
-    //init_SPI_slave();
+    init_SPI_slave();
 
     __bis_SR_register(GIE); // Enable interrupts
     ie2Cpy = IE2;
@@ -223,15 +223,20 @@ void init(unsigned char CS){
     while (!(IFG2 & UCB0TXIFG));
 //    ifgCpy = IFG2;
 
-
+//    while(!RECEIVED);
     dataBuffer[0] = RXData;
+//    RECEIVED = 0;
     TXData = 0x00;
     IE2 |= UCB0TXIE;
     while (!(IFG2 & UCB0TXIFG));
+//    while(!RECEIVED);
     dataBuffer[1] = RXData;
+//    RECEIVED = 0;
     TXData = 0x00;
     IE2 |= UCB0TXIE;
     while (!(IFG2 & UCB0TXIFG));
+//    while(!RECEIVED);
+//    RECEIVED = 0;
     dataBuffer[2] = RXData;
     if(CS == 3 || CS == 2 || CS == 5){
         P2OUT |= BIT;
@@ -245,12 +250,18 @@ void init(unsigned char CS){
 void initAll(){
     init(3);
     __no_operation();
-//    init(4);
-//    init(5);
+    init(4);
+    init(5);
 
     init(0);
-//    init(1);
-//    init(2);
+    init(1);
+    init(2);
+    setThreshold(3, 16);
+    setThreshold(4, 16);
+    setThreshold(1, 16);
+    setThreshold(5, 16);
+    setThreshold(2, 16);
+    setThreshold(0, 16);
 }
 
 
@@ -353,8 +364,8 @@ void sendIntegration(unsigned char CS){
 
       IE2 |= UCB0TXIE;
       while (!(IFG2 & UCB0TXIFG));
-      while(! RECEIVED);
-      RECEIVED = 0;
+//      while(! RECEIVED);
+//      RECEIVED = 0;
       dataBuffer[0] = RXData;
       TXData = 0xFF;
       IE2 |= UCB0TXIE;
@@ -377,7 +388,7 @@ void sendIntegration(unsigned char CS){
 
 void readXaxis(){
 
-    setThreshold(3, 16);
+
     __no_operation();
 
     //sendZebra1(BIT0);
@@ -417,7 +428,7 @@ void readXaxis(){
     __no_operation();
     //CS4 start here
     __no_operation();
-    setThreshold(4, 16);
+
 
     sendIntegration(4);
     __no_operation();
@@ -459,7 +470,7 @@ void readXaxis(){
 
     }
 
-    setThreshold(5, 16);
+
     sendIntegration(5);
     while(1){
       if (P2IN & BIT3){ // wait for FR to go back high
@@ -501,7 +512,7 @@ void readYaxis(){
 
     //unsigned char finalArray[50]; //final array with values
 
-    setThreshold(0, 16);
+
     __no_operation();
 
     //sendZebra1(BIT0);
@@ -529,7 +540,7 @@ void readYaxis(){
     __no_operation();
     //CS1 start here
     __no_operation();
-    setThreshold(1, 16);
+
 
     sendIntegration(1);
     __no_operation();
@@ -570,7 +581,7 @@ void readYaxis(){
 
     }
     __no_operation();
-    setThreshold(2, 16);
+
 
     sendIntegration(2);
     __no_operation();

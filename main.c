@@ -16,10 +16,14 @@ unsigned char finalArray[50];
 volatile unsigned char RXData = 0;
 volatile unsigned char slaveCmd = 0;
 
+double LINEAR_ARRAY_LENGTH = 23.216;
 
 // REading that we work with when trying to get new reading
 double READINGX ;
 double READINGY;
+
+volatile unsigned char READING_INDEX_X ;
+volatile unsigned char READING_INDEX_Y;
 
 
 void init(unsigned char BIT);
@@ -136,6 +140,10 @@ int main(void)
 //        IE2 |= UCA0TXIE; // This works but bit shifts to right by one One setting is wrong?
 //        //__bis_SR_register(GIE);
 //    }
+
+    //Initialize which byte to read
+    READING_INDEX_X = 0;
+    READING_INDEX_Y = 0;
 
     initAll();
 
@@ -759,7 +767,7 @@ double determineAngle(){
     }
     // Sensors are 7.1 MM Optical array. 32 pixel overlap. So 7.1 * 3 - (32/144 * 7.1) = 19.72 mm for total array
     //midpoint is 200 for angle 0
-    double d = (avgPos-(numOfBits/2.0)) * 23.216/numOfBits;
+    double d = (avgPos-(numOfBits/2.0)) * LINEAR_ARRAY_LENGTH/numOfBits;
     double angle = atan2(slitHeight,d);
 //    READING = angle;
     return angle ;
@@ -850,21 +858,15 @@ void readAll(unsigned char CS){
 
     TXData = 0x9C;
     IE2 |= UCB0TXIE;
-    while (!(IFG2 & UCB0TXIFG));//{
-        //__no_operation();
-    //}
+    while (!(IFG2 & UCB0TXIFG));
     dataBuffer[0] = RXData;
     TXData = 2;
     IE2 |= UCB0TXIE;
-    while (!(IFG2 & UCB0TXIFG));//{
-      //  __no_operation();
-    //}
+    while (!(IFG2 & UCB0TXIFG));
     dataBuffer[1] = RXData;
     TXData = 143;
     IE2 |= UCB0TXIE;
-    while (!(IFG2 & UCB0TXIFG));//{
-       // __no_operation();
-    //}
+    while (!(IFG2 & UCB0TXIFG));
     dataBuffer[2] = RXData;
     unsigned char i = 3;
     TXData = 0;
@@ -885,22 +887,28 @@ void readAll(unsigned char CS){
 }
 
 
-void sendReadings(){
-    size_t i ;
-    state1 == SENDING_MODE ;
-    double mask = 0xFF;
-    char *bytes = &READINGX;
-    char *bytesY = &READINGY;
-    for(i = 0; i < sizeof(double); i++){
-        while (!(IFG2 & UCA0TXIFG));
-        UCA0TXBUF = (char) (bytes[i]);
-    }
-    for(i = 0; i < sizeof(double); i++){
-        while (!(IFG2 & UCA0TXIFG));
-        UCA0TXBUF = (char) (bytes[i]);
-    }
-//    state1 = READING_MODE; //finish transmit so go back to reading mode
+//@Brief
+// ReadingX and readingY are doubles, we cast to a char array so we can send them byte by byte.
+// Reset state machine to reading_mode when done reading everything
+void send_readings(){
+    if (READING_INDEX_X < sizeof(READINGX)){
+          char *readings = &READINGX;
+            UCA0TXBUF = readings[READING_INDEX_X];
+            READING_INDEX_X += 1;
 
+      }
+      else{
+           char *readings = &READINGY;
+            UCA0TXBUF = readings[READING_INDEX_Y];
+            READING_INDEX_Y += 1;
+
+          //Reset indecies at the end and set back to reading mode
+          if(READING_INDEX_Y >= sizeof(READINGY)){
+              READING_INDEX_X = 0;
+              READING_INDEX_Y = 0;
+              state1 = READING_MODE ;
+          }
+      }
 }
 //TX interrupt
 #pragma vector=USCIAB0TX_VECTOR
@@ -918,20 +926,11 @@ __interrupt void USCIB0RX_ISR(void)
     if(IFG2 & UCA0RXIFG) // received a command and in correct mode
     {
         state1 = SENDING_MODE;
-        while (!(IFG2 & UCA0TXIFG));              // USCI_A0 TX buffer ready?
-        UCA0TXBUF = 0x01;
+//        while (!(IFG2 & UCA0TXIFG));              // USCI_A0 TX buffer ready?
+        send_readings();
+
+
     }
-//    if(state1 == SENDING_MODE){
-////        char *readings = &READING;
-//        //UCA0RXBUF;
-////        sendReadings();
-////        UCA0TXBUF = readings[READING_INDEX];
-////        READING_INDEX += 1;
-////        if(READING_INDEX == 8){
-////            READING_INDEX = 0 ;
-////            state1 = READING_MODE;
-////
-//    }
     else if (IFG2 & UCB0RXIFG){      //for slave cmd
         state1 = READING_MODE;
 

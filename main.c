@@ -19,8 +19,8 @@ volatile unsigned char slaveCmd = 0;
 double LINEAR_ARRAY_LENGTH = 23.216;
 
 // REading that we work with when trying to get new reading
-double READINGX ;
-double READINGY;
+float READINGX ;
+float READINGY;
 
 volatile unsigned char READING_INDEX_X ;
 volatile unsigned char READING_INDEX_Y;
@@ -56,7 +56,8 @@ volatile unsigned char ifgCpy = 0;
 volatile unsigned char ie2Cpy = 0;
 volatile unsigned char srCpy = 0;
 
-char TEST_MODE = 0 ;
+char TEST_MODE = 1 ;
+char SLAVE_ONLY = 0;
 volatile char RECEIVED = 0;
 
 typedef enum SPI_ModeEnum{
@@ -136,14 +137,22 @@ int main(void)
     __bis_SR_register(GIE); // Enable interrupts
     ie2Cpy = IE2;
 
-//    while(1){
-//        IE2 |= UCA0TXIE; // This works but bit shifts to right by one One setting is wrong?
-//        //__bis_SR_register(GIE);
-//    }
-
     //Initialize which byte to read
     READING_INDEX_X = 0;
     READING_INDEX_Y = 0;
+
+    //For testing slave only purposes
+    if(SLAVE_ONLY){
+        READINGX = -0.0;
+        READINGY = 2.0;
+    }
+
+    while(SLAVE_ONLY){
+        IE2 |= UCA0TXIE; // This works but bit shifts to right by one One setting is wrong?
+        //__bis_SR_register(GIE);
+    }
+
+
 
     initAll();
 
@@ -157,10 +166,11 @@ int main(void)
             __no_operation();
 //            __bic_SR_register(GIE);
             if(TEST_MODE){
-                READINGX = 2.5;
+                READINGX = -0.0;
             }
             else{
-                READINGX = determineAngle();
+                //cast to float first (it's accurate enough for our purposes)
+                READINGX = (float) determineAngle();
             }
 
 //            __bis_SR_register(GIE);
@@ -170,13 +180,16 @@ int main(void)
             __no_operation();
 //           __bic_SR_register(GIE); // disable interrupts
             if(TEST_MODE){
-                READINGY = 1.5;
+                READINGY = 1.0;
             }
             else{
-                READINGY = determineAngle();
+
+                READINGY = (float) determineAngle();
             }
 //            __bis_SR_register(GIE); // renable interrupts
             __no_operation();
+            int i;
+            for(i = 0; i < 5000; i++);
 
         }
         else{
@@ -887,22 +900,24 @@ void readAll(unsigned char CS){
 }
 
 
-//@Brief
+// @Brief
 // ReadingX and readingY are doubles, we cast to a char array so we can send them byte by byte.
 // Reset state machine to reading_mode when done reading everything
+// Will increment READING_INDEX_X and y respectivly as we go through the read
+// Sends the reading in LSB first (little endian orderedness)
 void send_readings(){
     if (READING_INDEX_X < sizeof(READINGX)){
-          char *readings = &READINGX;
+            char *readings = &READINGX;
             UCA0TXBUF = readings[READING_INDEX_X];
             READING_INDEX_X += 1;
 
       }
       else{
-           char *readings = &READINGY;
+            char *readings = &READINGY;
             UCA0TXBUF = readings[READING_INDEX_Y];
             READING_INDEX_Y += 1;
 
-          //Reset indecies at the end and set back to reading mode
+          //Reset indicies at the end and set back to reading mode
           if(READING_INDEX_Y >= sizeof(READINGY)){
               READING_INDEX_X = 0;
               READING_INDEX_Y = 0;
@@ -926,7 +941,8 @@ __interrupt void USCIB0RX_ISR(void)
     if(IFG2 & UCA0RXIFG) // received a command and in correct mode
     {
         state1 = SENDING_MODE;
-//        while (!(IFG2 & UCA0TXIFG));              // USCI_A0 TX buffer ready?
+       while (!(IFG2 & UCA0TXIFG));              // USCI_A0 TX buffer ready?
+       //UCA0TXBUF = 0x01;
         send_readings();
 
 

@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <math.h>
 
+
+
 /**
  * main.c
  */
@@ -39,8 +41,8 @@ void readAll(unsigned char BIT);
 void readXaxis();
 void readYaxis();
 //Case Parameters are defined here
-double slitHeight = 14.7;
-float slitWidth = 0;
+static const double slitHeight = 14.7;
+static const float slitWidth = 0;
 
 unsigned char ourBit;
 
@@ -56,7 +58,7 @@ volatile unsigned char ifgCpy = 0;
 volatile unsigned char ie2Cpy = 0;
 volatile unsigned char srCpy = 0;
 
-char TEST_MODE = 1 ;
+char TEST_MODE = 0;
 char SLAVE_ONLY = 0;
 volatile char RECEIVED = 0;
 
@@ -152,6 +154,8 @@ int main(void)
         //__bis_SR_register(GIE);
     }
 
+    READINGX = 0.0 ;
+    READINGY = 0.0 ; //initialize
 
 
     initAll();
@@ -159,9 +163,10 @@ int main(void)
     state1 = READING_MODE;
     __no_operation();
     while(1){
-        state1 = READING_MODE;
+        //state1 = READING_MODE;
         if(state1 == READING_MODE  ){
 //
+            IE2 &= ~UCA0TXIE; // disable msater communication till we finish our slave comms
             readXaxis();
             __no_operation();
 //            __bic_SR_register(GIE);
@@ -188,9 +193,10 @@ int main(void)
             }
 //            __bis_SR_register(GIE); // renable interrupts
             __no_operation();
-            int i;
-            for(i = 0; i < 5000; i++);
-
+//            int i;
+//            for(i = 0; i < 5000; i++);
+            IE2 |= UCA0TXIE ;// reenable msater communication till we finish our slave comms
+            state1 = SENDING_MODE; // go to sending mode to send to master stuff
         }
         else{
             // shoudle be in state1 = SENDING_MODE;
@@ -906,24 +912,38 @@ void readAll(unsigned char CS){
 // Will increment READING_INDEX_X and y respectivly as we go through the read
 // Sends the reading in LSB first (little endian orderedness)
 void send_readings(){
-    if (READING_INDEX_X < sizeof(READINGX)){
-            char *readings = &READINGX;
-            UCA0TXBUF = readings[READING_INDEX_X];
-            READING_INDEX_X += 1;
+    //if (READING_INDEX_X < sizeof(READINGX)){
+    char *readingXs = &READINGX;
+    char *readingYs = &READINGY;
+    unsigned char cmd = UCA0RXBUF;
+    // if UCA0RXBUF is less then 4 we index into x
+    if (cmd < sizeof(READINGX)){
+        UCA0TXBUF = readingXs[cmd];
+    }
+    // Get y readings if from 4 4 - 8
+    else if (cmd < sizeof(READINGX) + sizeof(READINGY)){
+        UCA0TXBUF = readingYs[(cmd - sizeof(READINGX))];
+        if (cmd >= sizeof(READINGX) + sizeof(READINGY) - 1){
+            state1 = READING_MODE ;
+        }
+    }
 
-      }
-      else{
-            char *readings = &READINGY;
-            UCA0TXBUF = readings[READING_INDEX_Y];
-            READING_INDEX_Y += 1;
+
+    //        READING_INDEX_X += 1;
+
+      //}
+      //else{
+
+       //     UCA0TXBUF = readings[READING_INDEX_Y];
+        //    READING_INDEX_Y += 1;
 
           //Reset indicies at the end and set back to reading mode
-          if(READING_INDEX_Y >= sizeof(READINGY)){
-              READING_INDEX_X = 0;
-              READING_INDEX_Y = 0;
-              state1 = READING_MODE ;
-          }
-      }
+      //    if(READING_INDEX_Y >= sizeof(READINGY)){
+        //      READING_INDEX_X = 0;
+          //    READING_INDEX_Y = 0;
+
+
+
 }
 //TX interrupt
 #pragma vector=USCIAB0TX_VECTOR
@@ -940,15 +960,15 @@ __interrupt void USCIB0RX_ISR(void)
 
     if(IFG2 & UCA0RXIFG) // received a command and in correct mode
     {
-        state1 = SENDING_MODE;
-       while (!(IFG2 & UCA0TXIFG));              // USCI_A0 TX buffer ready?
+//        state1 = SENDING_MODE;
+        while (!(IFG2 & UCA0TXIFG));              // USCI_A0 TX buffer ready?
        //UCA0TXBUF = 0x01;
         send_readings();
 
 
     }
     else if (IFG2 & UCB0RXIFG){      //for slave cmd
-        state1 = READING_MODE;
+        //state1 = READING_MODE;
 
         RXData = UCB0RXBUF;
         RECEIVED = 1 ;

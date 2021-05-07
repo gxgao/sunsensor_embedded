@@ -59,7 +59,8 @@ volatile unsigned char ie2Cpy = 0;
 volatile unsigned char srCpy = 0;
 
 char TEST_MODE = 0;
-char SLAVE_ONLY = 0;
+char SLAVE_ONLY = 1;
+char MASTER_ONLY = 0;
 volatile char RECEIVED = 0;
 
 typedef enum SPI_ModeEnum{
@@ -133,11 +134,12 @@ int main(void)
 
 
     init_SPI_master() ;
-
-    init_SPI_slave();
+    if(!MASTER_ONLY){
+        init_SPI_slave();
+    }
 
     __bis_SR_register(GIE); // Enable interrupts
-    ie2Cpy = IE2;
+//    ie2Cpy = IE2;
 
     //Initialize which byte to read
     READING_INDEX_X = 0;
@@ -164,9 +166,9 @@ int main(void)
     __no_operation();
     while(1){
         //state1 = READING_MODE;
-        if(state1 == READING_MODE  ){
+        if(state1 == READING_MODE || MASTER_ONLY ){
 //
-            IE2 &= ~UCA0TXIE; // disable msater communication till we finish our slave comms
+            IE2 &= ~UCA0TXIE; // disable master communication till we finish our slave comms
             readXaxis();
             __no_operation();
 //            __bic_SR_register(GIE);
@@ -195,11 +197,14 @@ int main(void)
             __no_operation();
 //            int i;
 //            for(i = 0; i < 5000; i++);
-            IE2 |= UCA0TXIE ;// reenable msater communication till we finish our slave comms
-            state1 = SENDING_MODE; // go to sending mode to send to master stuff
+            IE2 |= UCA0TXIE ;// reenable master communication till we finish our slave comms
+            if(!MASTER_ONLY){
+                state1 = SENDING_MODE; // go to sending mode to send to master stuff
+            }
+
         }
         else{
-            // shoudle be in state1 = SENDING_MODE;
+            // should be in state1 = SENDING_MODE;
             // We want to send the rest of the buffer over when requested
             IE2 |=  UCA0TXIE;
 
@@ -210,6 +215,7 @@ int main(void)
    return 0;
 }
 
+//Sends an init command to a sensor (turns a sensor on)
 void init(unsigned char CS){
 //    state1 = TX_DATA_MODE;
     unsigned char BIT;
@@ -274,12 +280,12 @@ void init(unsigned char CS){
 //    state1 = IDLE_MODE;
 }
 
+// Initializes all the sensors and sets the light threshold to desired value
 void initAll(){
     init(3);
     __no_operation();
     init(4);
     init(5);
-
     init(0);
     init(1);
     init(2);
@@ -293,7 +299,8 @@ void initAll(){
 
 
 
-
+// A test funciton that pings sensors to send preset values back (this is to check
+// Communicatoins are working and photodiodes are working)
 void sendZebra1(unsigned char BIT){
 //    state1 = TX_DATA_MODE;
     P3OUT &= ~BIT;  //testing CS1
@@ -314,6 +321,7 @@ void sendZebra1(unsigned char BIT){
 //    state1 = IDLE_MODE;
 }
 
+// Another test function that causes sensors to return preset values
 void sendZebra2(unsigned char BIT){
 //    state1 = TX_DATA_MODE;
     P3OUT &= ~BIT;  //testing CS1
@@ -335,7 +343,7 @@ void sendZebra2(unsigned char BIT){
 
 }
 
-
+// A test function that will cause sensors to return 01010101....
 void sendZebra0(unsigned char BIT){
 //    state1 = TX_DATA_MODE;
     P3OUT &= ~BIT;  //testing CS1
@@ -357,6 +365,10 @@ void sendZebra0(unsigned char BIT){
 
 }
 
+
+// Sends an integration command to sensor
+// This tells the sensor to read values from the environment
+// @param [in] CS -> the chip selected sensor to read values from
 void sendIntegration(unsigned char CS){
 //      state1 = TX_DATA_MODE;
       unsigned char BIT = 0;
@@ -412,7 +424,13 @@ void sendIntegration(unsigned char CS){
 //      state1 = IDLE_MODE;
 }
 
-
+// Pulls Values from the X axis of sensors
+// Will fill continously fill a data buffer for each sensor,
+// After which will dump it into the final array buffer.
+// The reason why Y axis and X axis are different is due to the fact
+// that one of the sensors on the Y axis was reversed on the board (to meet wiring)
+// Requirements.
+// Includes CS 3, 4 and 5
 void readXaxis(){
 
 
@@ -486,7 +504,7 @@ void readXaxis(){
 
        }
        else if( count == 17){
-           finalArray[count] = finalArray[count] | dataBuffer[i]; //Or the overlap
+           finalArray[count] = finalArray[count] & dataBuffer[i]; //Or the overlap
            count+=1;
 
        }
@@ -535,9 +553,15 @@ void readXaxis(){
 
 }
 
-void readYaxis(){
 
-    //unsigned char finalArray[50]; //final array with values
+// Pulls Values from the Y axis of sensors
+// Will fill continously fill a data buffer for each sensor,
+// After which will dump it into the final array buffer.
+// The reason why Y axis and X axis are different is due to the fact
+// that one of the sensors on the Y axis was reversed on the board (to meet wiring)
+// Requirements.
+// Includes CS 0, 1, 2
+void readYaxis(){
 
 
     __no_operation();
@@ -597,7 +621,7 @@ void readYaxis(){
 
        }
        else if( count == 17){
-           finalArray[count] = finalArray[count] | dataBuffer[i]; //Or the overlap
+           finalArray[count] = finalArray[count] & dataBuffer[i]; //Or the overlap
            count+=1;
 
        }
@@ -637,7 +661,7 @@ void readYaxis(){
 
      }
      else if(count == 33){
-         finalArray[count] = finalArray[count] & dataBuffer[i]; //Or the overlap
+         finalArray[count] = finalArray[count] & dataBuffer[i]; //and the overlap
          count += 1;
      }
      else{
@@ -785,9 +809,9 @@ double determineAngle(){
         return -1.0;
     }
     // Sensors are 7.1 MM Optical array. 32 pixel overlap. So 7.1 * 3 - (32/144 * 7.1) = 19.72 mm for total array
-    //midpoint is 200 for angle 0
+    //midpoint is 204 for angle 0
     double d = (avgPos-(numOfBits/2.0)) * LINEAR_ARRAY_LENGTH/numOfBits;
-    double angle = atan2(slitHeight,d);
+    double angle = atan(d/slitHeight);
 //    READING = angle;
     return angle ;
 }
@@ -927,23 +951,6 @@ void send_readings(){
             state1 = READING_MODE ;
         }
     }
-
-
-    //        READING_INDEX_X += 1;
-
-      //}
-      //else{
-
-       //     UCA0TXBUF = readings[READING_INDEX_Y];
-        //    READING_INDEX_Y += 1;
-
-          //Reset indicies at the end and set back to reading mode
-      //    if(READING_INDEX_Y >= sizeof(READINGY)){
-        //      READING_INDEX_X = 0;
-          //    READING_INDEX_Y = 0;
-
-
-
 }
 //TX interrupt
 #pragma vector=USCIAB0TX_VECTOR
